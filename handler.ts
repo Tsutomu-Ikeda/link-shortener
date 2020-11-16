@@ -1,20 +1,34 @@
 import {APIGatewayProxyHandler} from "aws-lambda";
 import "source-map-support/register";
 import * as aws from "aws-sdk";
+import * as crypto from "crypto";
+import { URLSearchParams } from "url"
 
 import * as httpUtils from "./httpUtils";
 
+const isDev = (event: {headers : {Host?: string}}) => !!(event.headers.Host?.startsWith("localhost"));
+
 const localDynamodb: aws.DynamoDB.DocumentClient = new aws.DynamoDB.DocumentClient({region: "ap-northeast-1", endpoint: "http://localhost:3030"});
 const dynamodb: aws.DynamoDB.DocumentClient = new aws.DynamoDB.DocumentClient({region: "ap-northeast-1"});
-const getDynamodbClient = (ip : string): aws.DynamoDB.DocumentClient => {
-  return ip.startsWith("localhost")
+const getDynamodbClient = (event : {headers : {Host?: string}}): aws.DynamoDB.DocumentClient => {
+  return isDev(event)
     ? localDynamodb
     : dynamodb;
 };
 
+export const admin: APIGatewayProxyHandler = async (_event, _context) => {
+  const contentType = "text/html; charset=utf-8";
+
+  return {
+    statusCode: 200,
+    body: "<h1>Hoge!</h1>あいうえお",
+    headers: httpUtils.toKebabCase({contentType})
+  };
+};
+
 export const hello: APIGatewayProxyHandler = async (_event, _context) => {
   const location = "https://github.com/Tsutomu-Ikeda/",
-    contentType = "text/html";
+    contentType = "text/html; charset=utf-8";
 
   return {
     statusCode: 302,
@@ -23,28 +37,109 @@ export const hello: APIGatewayProxyHandler = async (_event, _context) => {
   };
 };
 
+
+const createPermissionRecord = async (sessionId: string, linkId: string) => {
+  const passCode = crypto.randomBytes(3).toString("hex");
+  await dynamodb.put({
+    TableName: "short-link-permissions",
+    Item: {
+      sessionId,
+      linkId,
+      approved: false,
+      passCode,
+    }
+  }).promise();
+};
+
+const checkSessionId = async (sessionId: string, linkId: string) => {
+  const makeSessionId = async () => {
+    const nextSessionId = crypto.randomBytes(24).toString("base64");
+    await createPermissionRecord(nextSessionId, linkId);
+    return nextSessionId;
+  };
+
+  if (sessionId) {
+    const permission = await dynamodb.get({
+      TableName: "short-link-permissions",
+      Key: {
+        sessionId,
+        linkId,
+      }
+    }).promise();
+    if (permission.Item) {
+      return sessionId;
+    }
+  }
+
+  return await makeSessionId();
+};
+
 export const redirect: APIGatewayProxyHandler = async (event, _context) => {
-  const contentType = "text/html; charset=utf-8";
-  const dynamodb = getDynamodbClient(event.headers.Host);
+  const defaultContentType = "application/json; charset=utf-8";
+  const dynamodb = getDynamodbClient(event);
   const result: aws.DynamoDB.GetItemOutput = await dynamodb.get({
     TableName: "short-link",
     Key: {
       id: event.pathParameters.id
     }
   }).promise();
+  const cookie = new URLSearchParams(event.headers.cookie || event.headers.Cookie);
+  const sessionId = cookie.get("session");
+  const linkId = event.pathParameters.id;
+  const xhr = event.queryStringParameters?.xhr === "true";
 
-  if (result.Item && result.Item.original_url) {
-    const location = result.Item.original_url.toString();
-    return {
-      statusCode: 302,
-      body: `<h1>リダイレクトページ</h1> ${location} <script> location.href = "${location}" </script>`,
-      headers: httpUtils.toKebabCase({location, contentType})
-    };
+  const verifySession = async (id: string) => {
+    if (!id) {
+      return false;
+    }
+    const permission = await dynamodb.get({TableName: "short-link-permissions", Key: {
+        sessionId: id,
+        linkId,
+      }}).promise();
+    return !!(permission.Item?.approved);
+  };
+  const contentType = defaultContentType;
+
+  if (result.Item?.originalUrl) {
+    if (result.Item.public || (await verifySession(sessionId))) {
+      const location = result.Item.originalUrl.toString();
+
+      if (xhr) {
+        return {
+          statusCode: 200,
+          body: JSON.stringify({location}),
+          headers: httpUtils.toKebabCase({contentType})
+        };
+      } else {
+        return {
+          statusCode: 302,
+          body: null,
+          headers: httpUtils.toKebabCase({location, contentType})
+        };
+      }
+    } else {
+      if (xhr) {
+        const session = await checkSessionId(sessionId, linkId);
+        const setCookie = `session=${session}; HttpOnly${isDev(event) ? "" : "; Secure"}`
+        return {
+          statusCode: 403,
+          body: null,
+          headers: httpUtils.toKebabCase({contentType, setCookie})
+        };
+      } else {
+        const location = `/link?id=${event.pathParameters.id}`;
+        return {
+          statusCode: 302,
+          body: null,
+          headers: httpUtils.toKebabCase({location, contentType})
+        };
+      }
+    }
   } else {
     return {
       statusCode: 404,
       body: "<h1>お探しのページは見つかりませんでした</h1>",
-      headers: httpUtils.toKebabCase({contentType})
+      headers: httpUtils.toKebabCase({contentType: 'text/html; charset=utf-8'})
     };
   }
 };

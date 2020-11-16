@@ -1,17 +1,19 @@
 import type { Serverless } from 'serverless/aws';
 
+const DYNAMODB_TABLES = ['short-link', 'short-link-permissions'];
+
 const serverlessConfiguration: Serverless = {
   service: {
     name: 'link-shortener',
-    // app and org for use with dashboard.serverless.com
-    // app: your-app-name,
-    // org: your-org-name,
   },
   frameworkVersion: '1',
   custom: {
     webpack: {
       webpackConfig: './webpack.config.js',
       includeModules: true
+    },
+    'serverless-offline': {
+      httpPort: 3001,
     },
     dynamodb: {
       stages: [
@@ -47,9 +49,9 @@ const serverlessConfiguration: Serverless = {
     },
     environment: {
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
-      DYNAMODB_TABLE: 'short-link',
+      DYNAMODB_TABLES: DYNAMODB_TABLES.join(", "),
     },
-    iamRoleStatements: [{
+    iamRoleStatements: DYNAMODB_TABLES.map((tableName) => { return {
       Effect: 'Allow',
       Action: [
         "dynamodb:Query",
@@ -59,8 +61,8 @@ const serverlessConfiguration: Serverless = {
         "dynamodb:UpdateItem",
         "dynamodb:DeleteItem",
       ],
-      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
-    }]
+      Resource: `arn:aws:dynamodb:\${opt:region, self:provider.region}:*:table/${tableName}`
+    }}),
   },
   resources: {
     Resources: {
@@ -81,10 +83,45 @@ const serverlessConfiguration: Serverless = {
             WriteCapacityUnits: 3,
           }
         }
-      }
+      },
+      ShortLinkPermissionsTable: {
+        Type: "AWS::DynamoDB::Table",
+        Properties: {
+          TableName: "short-link-permissions",
+          AttributeDefinitions: [{
+            AttributeName: "sessionId",
+            AttributeType: "S",
+          }, {
+            AttributeName: "linkId",
+            AttributeType: "S",
+          }],
+          KeySchema: [{
+            AttributeName: "sessionId",
+            KeyType: "HASH",
+          }, {
+            AttributeName: "linkId",
+            KeyType: "RANGE",
+          }],
+          ProvisionedThroughput: {
+            ReadCapacityUnits: 2,
+            WriteCapacityUnits: 2,
+          }
+        }
+      },
     }
   },
   functions: {
+    admin: {
+      handler: 'handler.admin',
+      events: [
+        {
+          http: {
+            method: 'get',
+            path: 'l/admin',
+          }
+        }
+      ]
+    },
     hello: {
       handler: 'handler.hello',
       events: [

@@ -1,12 +1,17 @@
 [
   {
     "id": "twitter",
-    "original_url": "https://twitter.com/tsutomu_ikeda/",
+    "originalUrl": "https://twitter.com/tsutomu_ikeda/",
     "public": true
   },
   {
     "id": "github",
-    "original_url": "https://github.com/Tsutomu-Ikeda",
+    "originalUrl": "https://github.com/Tsutomu-Ikeda",
+    "public": true
+  },
+  {
+    "id": "instagram",
+    "originalUrl": "https://www.instagram.com/tomtsutom/",
     "public": true
   }
 ]
