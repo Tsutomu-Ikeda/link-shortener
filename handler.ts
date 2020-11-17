@@ -6,14 +6,14 @@ import { URLSearchParams } from "url"
 
 import * as httpUtils from "./httpUtils";
 
-const isDev = (event: {headers : {Host?: string}}) => !!(event.headers.Host?.startsWith("localhost"));
+const isDev = (event: {headers : {host?: string, Host?: string}}) => !!((event.headers.Host || event.headers.host)?.startsWith("localhost"));
 
 const localDynamodb: aws.DynamoDB.DocumentClient = new aws.DynamoDB.DocumentClient({region: "ap-northeast-1", endpoint: "http://localhost:3030"});
-const dynamodb: aws.DynamoDB.DocumentClient = new aws.DynamoDB.DocumentClient({region: "ap-northeast-1"});
-const getDynamodbClient = (event : {headers : {Host?: string}}): aws.DynamoDB.DocumentClient => {
+const prodDynamodb: aws.DynamoDB.DocumentClient = new aws.DynamoDB.DocumentClient({region: "ap-northeast-1"});
+const getDynamodbClient = (event : {headers : {host?: string, Host?: string}}): aws.DynamoDB.DocumentClient => {
   return isDev(event)
     ? localDynamodb
-    : dynamodb;
+    : prodDynamodb;
 };
 
 export const admin: APIGatewayProxyHandler = async (_event, _context) => {
@@ -38,7 +38,7 @@ export const hello: APIGatewayProxyHandler = async (_event, _context) => {
 };
 
 
-const createPermissionRecord = async (sessionId: string, linkId: string) => {
+const createPermissionRecord = async (dynamodb: aws.DynamoDB.DocumentClient, sessionId: string, linkId: string) => {
   const passCode = crypto.randomBytes(3).toString("hex");
   await dynamodb.put({
     TableName: "short-link-permissions",
@@ -51,10 +51,10 @@ const createPermissionRecord = async (sessionId: string, linkId: string) => {
   }).promise();
 };
 
-const checkSessionId = async (sessionId: string, linkId: string) => {
+const checkSessionId = async (dynamodb: aws.DynamoDB.DocumentClient, sessionId: string, linkId: string) => {
   const makeSessionId = async () => {
     const nextSessionId = crypto.randomBytes(24).toString("base64");
-    await createPermissionRecord(nextSessionId, linkId);
+    await createPermissionRecord(dynamodb, nextSessionId, linkId);
     return nextSessionId;
   };
 
@@ -66,9 +66,10 @@ const checkSessionId = async (sessionId: string, linkId: string) => {
         linkId,
       }
     }).promise();
-    if (permission.Item) {
-      return sessionId;
+    if (!permission.Item) {
+      await createPermissionRecord(dynamodb, sessionId, linkId);
     }
+    return sessionId;
   }
 
   return await makeSessionId();
@@ -119,7 +120,7 @@ export const redirect: APIGatewayProxyHandler = async (event, _context) => {
       }
     } else {
       if (xhr) {
-        const session = await checkSessionId(sessionId, linkId);
+        const session = await checkSessionId(dynamodb, sessionId, linkId);
         const setCookie = `session=${session}; HttpOnly${isDev(event) ? "" : "; Secure"}`
         return {
           statusCode: 403,
