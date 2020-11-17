@@ -102,6 +102,10 @@ const serverlessConfiguration: Serverless = {
             AttributeName: "linkId",
             KeyType: "RANGE",
           }],
+          TimeToLiveSpecification: {
+            AttributeName: "maxAge",
+            Enabled: true,
+          },
           ProvisionedThroughput: {
             ReadCapacityUnits: 2,
             WriteCapacityUnits: 2,

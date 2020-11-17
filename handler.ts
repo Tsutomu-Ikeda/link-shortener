@@ -16,6 +16,8 @@ const getDynamodbClient = (event : {headers : {host?: string, Host?: string}}): 
     : prodDynamodb;
 };
 
+const maxAge = 2592000;
+
 export const admin: APIGatewayProxyHandler = async (_event, _context) => {
   const contentType = "text/html; charset=utf-8";
 
@@ -47,6 +49,7 @@ const createPermissionRecord = async (dynamodb: aws.DynamoDB.DocumentClient, ses
       linkId,
       approved: false,
       passCode,
+      maxAge,
     }
   }).promise();
 };
@@ -121,7 +124,7 @@ export const redirect: APIGatewayProxyHandler = async (event, _context) => {
     } else {
       if (xhr) {
         const session = await checkSessionId(dynamodb, sessionId, linkId);
-        const setCookie = `session=${session}; Path=/; Max-Age=2592000; HttpOnly${isDev(event) ? "" : "; Secure"}`
+        const setCookie = `session=${session}; Path=/; Max-Age=${maxAge}; HttpOnly${isDev(event) ? "" : "; Secure"}`
         return {
           statusCode: 403,
           body: null,
