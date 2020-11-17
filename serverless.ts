@@ -6,7 +6,7 @@ const serverlessConfiguration: Serverless = {
   service: {
     name: 'link-shortener',
   },
-  frameworkVersion: '1',
+  frameworkVersion: '>=1.20.2',
   custom: {
     webpack: {
       webpackConfig: './webpack.config.js',

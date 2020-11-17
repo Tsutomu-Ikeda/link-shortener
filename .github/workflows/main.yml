@@ -1,18 +1,26 @@
-name: CI
+name: Deploy main branch
+
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  build:
-    name: Build and Deploy
+  deploy:
+    name: deploy
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [12.x]
     steps:
-      - name: sls-action
-        uses: dragonraid/sls-action@cceed5a6f9b1694d359db3981239780774b461a7
+      - uses: actions/checkout@v2
+      - uses: borales/actions-yarn@v2.0.0
+        with:
+          cmd: install
+      - name: serverless deploy
+        uses: mikeal/npx@79eaf1b15da2aa0b5f462e4621642f64581b2326
+        with:
+          args: serverless deploy -v --stage prod
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: "ap-northeast-1"
-        with:
-          args: deploy -v --stage prod
