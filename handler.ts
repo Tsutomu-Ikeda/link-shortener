@@ -121,7 +121,7 @@ export const redirect: APIGatewayProxyHandler = async (event, _context) => {
     } else {
       if (xhr) {
         const session = await checkSessionId(dynamodb, sessionId, linkId);
-        const setCookie = `session=${session}; HttpOnly${isDev(event) ? "" : "; Secure"}`
+        const setCookie = `session=${session}; Path=/; Max-Age=2592000; HttpOnly${isDev(event) ? "" : "; Secure"}`
         return {
           statusCode: 403,
           body: null,
