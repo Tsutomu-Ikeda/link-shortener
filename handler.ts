@@ -87,7 +87,7 @@ export const redirect: APIGatewayProxyHandler = async (event, _context) => {
       id: event.pathParameters.id
     }
   }).promise();
-  const cookie = new URLSearchParams(event.headers.cookie || event.headers.Cookie);
+  const cookie = new URLSearchParams((event.headers.cookie || event.headers.Cookie)?.replace(/; ?/g, "&").replace("+", "%2b"));
   const sessionId = cookie.get("session");
   const linkId = event.pathParameters.id;
   const xhr = event.queryStringParameters?.xhr === "true";
